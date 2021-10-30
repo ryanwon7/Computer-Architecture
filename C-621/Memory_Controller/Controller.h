@@ -21,6 +21,8 @@ static unsigned NUM_OF_BANKS = 8; // number of banks
 static unsigned nclks_read = 53;
 static unsigned nclks_write = 53;
 
+#define FCFS 1
+
 // Controller definition
 typedef struct Controller
 {
@@ -40,6 +42,10 @@ typedef struct Controller
     unsigned bank_shift;
     uint64_t bank_mask;
 
+    // Count bank_conflicts for FCFS controller
+    int bank_conflicts;
+    int same_node_flag;
+
 }Controller;
 
 Controller *initController()
@@ -57,6 +63,9 @@ Controller *initController()
 
     controller->bank_shift = log2(BLOCK_SIZE);
     controller->bank_mask = (uint64_t)NUM_OF_BANKS - (uint64_t)1;
+
+    controller->bank_conflicts = 0;
+    controller->same_node_flag = 0;
 
     return controller;
 }
@@ -117,6 +126,7 @@ void tick(Controller *controller)
     // Step three, find a request to schedule
     if (controller->waiting_queue->size)
     {
+#ifdef FCFS
         // Implementation One - FCFS
         Node *first = controller->waiting_queue->first;
         int target_bank_id = first->bank_id;
@@ -137,7 +147,48 @@ void tick(Controller *controller)
 
             migrateToQueue(controller->pending_queue, first);
             deleteNode(controller->waiting_queue, first);
+            controller->same_node_flag = 0;
         }
+        else 
+        {
+            if (controller->same_node_flag == 0)
+            {
+                controller->bank_conflicts++;
+                controller->same_node_flag = 1;
+            }
+        }
+#endif
+#ifdef OOO
+        if (controller->pending_queue->size == NUM_OF_BANKS) // all banks are in use at the moment
+            return; 
+
+        Node *current = controller->waiting_queue->first;
+        for (int i = 0; i < controller->waiting_queue->size; i++) {
+            int target_bank_id = current->bank_id;
+            if ((controller->bank_status)[target_bank_id].next_free <= controller->cur_clk)
+            {
+                current->begin_exe = controller->cur_clk;
+                if (current->req_type == READ)
+                {
+                    current->end_exe = current->begin_exe + (uint64_t)nclks_read;
+                }
+                else if (current->req_type == WRITE)
+                {
+                    current->end_exe = current->begin_exe + (uint64_t)nclks_write;
+                }
+                // The target bank is no longer free until this request completes.
+                (controller->bank_status)[target_bank_id].next_free = current->end_exe;
+
+                migrateToQueue(controller->pending_queue, current);
+                deleteNode(controller->waiting_queue, current);
+                return; // served a request, next cycle
+            }
+            else {
+                current = current->next;
+            }
+        }
+#endif
+
     }
 }
 

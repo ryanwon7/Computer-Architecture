@@ -10,6 +10,7 @@ extern unsigned ongoingPendingRequests(Controller *controller);
 extern bool send(Controller *controller, Request *req);
 extern void tick(Controller *controller);
 
+
 int main(int argc, const char *argv[])
 {	
     if (argc != 2)
@@ -48,9 +49,16 @@ int main(int argc, const char *argv[])
         ++cycles;
     }
 
+#ifdef FCFS
+    printf("Total FCFS Bank-Conflicts: %d\n", controller->bank_conflicts);
+    printf("FCFS End Execution Time: ""%"PRIu64"\n", cycles);
+#endif
+#ifdef OOO
+    printf("OOO End Execution Time: ""%"PRIu64"\n", cycles);
+#endif    
+
     free(controller->bank_status);
     free(controller->waiting_queue);
     free(controller->pending_queue);
     free(controller);
-    printf("End Execution Time: ""%"PRIu64"\n", cycles);
 }
